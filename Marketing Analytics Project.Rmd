@@ -1,0 +1,827 @@
+---
+title: "Marketing Analytics Project"
+author: "Matt"
+date: "11/10/2020"
+output: html_document
+---
+
+# Data Input & Packages
+
+```{r}
+#install.packages("rtweet")
+library(rtweet) 
+# searches and downloads all matched Twitter activity over last 8-9 days
+# Twitter only allows you to take a couple 100k a day 
+
+library(httpuv) 
+# one time use, allows you to connect your r-studio to your twitter through your twitter acct.
+# Twitter acct. = mm_stone124
+
+library(readr)
+library(tidyverse)
+library(lubridate)
+library(tokenizers)
+library(tidytext)
+library(stringr)
+library(stringi)
+#install.packages("wordcloud")
+library(wordcloud)
+library(tm)
+#install.packages("emo")
+#library(emo)
+
+```
+
+
+# Data Manipulation (For Xbox)
+
+```{r, cache=FALSE}
+# Variations of xbox
+xbox_x <-search_tweets("\"xbox series x\" OR \"xbox x\" OR \"xbox series x release\" OR \"xbox release\" OR \"microsoft xbox series x\" OR \"microsoft xbox x\" OR \"order microsoft xbox series x\" OR \"order microsoft xbox x\" OR \"order microsoft xbox series x\" OR \"order microsoft xbox x\"",
+                           n=18000,
+                           include_rts=FALSE,
+                           lang="en",
+                           parse=TRUE)
+
+```
+
+
+
+# Data Analysis for Xbox Series X (1st Attempt)
+```{r}
+xbox_x <- as.data.frame(xbox_x)
+xbox_x$id <- seq.int(nrow(xbox_x))
+
+# Pulling out only text information
+xbox_x_txt <- xbox_x
+
+# Change all text to lowercase
+xbox_x_txt$text <- tolower(xbox_x_txt$text)
+
+
+# Remove duplicates
+xbox_x_txt <- xbox_x_txt %>% filter(!duplicated(xbox_x_txt)) 
+
+
+
+# Create a text_length variable
+xbox_x_txt$text_length <- str_length(xbox_x_txt$text)
+
+
+# Extract using unnest_tokens
+xbox_words <- xbox_x_txt %>% unnest_tokens(word, text) %>% select(id,word)
+
+xbox_words <- xbox_words %>% anti_join(stop_words)
+
+# View the top 20 words
+head(xbox_words %>% count(word, sort = TRUE), 20)
+## Remove words like, xbox, t.co, series, https
+
+
+# Takeout certain words
+xbox_words <- xbox_words %>%
+  filter(word != "xbox" & word != "t.co" & word != "series" & word != "https")
+
+
+
+# Word count after filter
+head(xbox_words %>% count(word, sort = TRUE), 20)
+
+
+# View top sentiment words
+head(sentiments) 
+
+# Create variable for Sentiment
+temp1 <- sentiments 
+
+
+# Left join sentiment words w/ wine_words
+xbox_words <- xbox_words %>% left_join(temp1, by =c("word"="word")) # Joined based on the "word"
+
+
+
+# Create this as a numeric value
+## Creating "positive" column
+xbox_words$positive <- 0
+
+## Creating "negative" column
+xbox_words$negative <- 0
+
+
+# Replace and populate columns
+xbox_words <- xbox_words %>%
+  mutate(positive = replace(positive, sentiment == "positive", 1)) %>% 
+  # if "sentiment" = positive = 1
+  mutate(negative = replace(negative, sentiment == "negative", 1)) 
+  # if "sentiment" = negative = 1
+
+
+# Sum up all positive and negative words, create new variable "sentiment" (difference between the 2)
+xbox_words <- xbox_words %>%
+  group_by(id) %>%
+  summarize(pos_words = sum(positive),
+            neg_words = sum(negative)) %>%
+  mutate(sentiment = pos_words - neg_words)
+
+# Join original data with word data
+xbox_x_txt <- xbox_x_txt %>%
+  left_join(xbox_words, by = c("id"="id"))
+
+
+# Showing positive sentiments
+xbox_x_txt %>% filter(sentiment > 0) %>%
+  select(text, sentiment, screen_name, location, text_length) %>%
+  arrange(desc(sentiment)) ## We only have 4786 positive tweets
+
+
+# Showing Negative sentiments
+xbox_x_txt %>% filter(sentiment < 0) %>% 
+  select(screen_name, text, location, text_length, sentiment) # 2756 "negative" tweets
+
+
+# Looking if text_length as general sentiment
+## Looking at Tweets with more than 122 characters 
+xbox_x_txt %>%
+  filter(text_length > 122) %>%
+  summarize(sum(sentiment)) # having a longer word count (over the median of 122, as well as excluding 122), in the analysis will show a higher positive sentiment which was 1617 
+
+
+
+## Finding the Averages
+xbox_x_txt %>%
+  filter(text_length > 122) %>% select(pos_words, neg_words, sentiment) %>%
+  summary()
+### Positive word Average = .0.6803
+### Negative word Average = 0.4909
+### Overall sentiment Average = 0.1894
+
+
+
+## Looking at tweets with less than 122 characters
+sumX <- xbox_x_txt %>%
+  filter(text_length < 122)
+
+sumX <- sumX %>% filter(sentiment != 0) %>% select(sentiment)
+
+## Find the Sum  
+sum(sumX) # 684
+
+## Reset SumX to find the summary of positive and negative tweets
+sumX <- xbox_x_txt %>%
+  filter(text_length < 122) %>% select(pos_words, neg_words, sentiment)
+
+## Finding the Averages
+summary(sumX)
+### Positive word Average = 0.2348
+### Negative word Average = 0.153
+### Overall sentiment Average = 0.08182
+
+
+
+
+xbox_x_txt %>%
+  filter(pos_words != "NA" & neg_words != "NA" & sentiment != "NA") %>%
+  select(pos_words,neg_words,sentiment) %>%
+  summary()
+
+# The mean positive words 0.4348, mean negative is 0.3059, the overall sentiment mean was 0.1288
+# The takeaway here = ______ are often positive 
+
+
+```
+
+
+
+
+# Analysis w/out the word "Win"
+```{r}
+xbox_x <- as.data.frame(xbox_x)
+xbox_x$id <- seq.int(nrow(xbox_x))
+
+# Pulling out only text information
+xbox_x_txt <- xbox_x
+
+# Change all text to lowercase
+xbox_x_txt$text <- tolower(xbox_x_txt$text)
+
+
+# Remove duplicates
+xbox_x_txt <- xbox_x_txt %>% filter(!duplicated(xbox_x_txt)) 
+
+
+
+# Create a text_length variable
+xbox_x_txt$text_length <- str_length(xbox_x_txt$text)
+
+
+# Extract using unnest_tokens
+xbox_words <- xbox_x_txt %>% unnest_tokens(word, text) %>% select(id,word)
+
+xbox_words <- xbox_words %>% anti_join(stop_words)
+
+
+
+# Takeout certain words
+xbox_words <- xbox_words %>%
+  filter(word != "xbox" & word != "t.co" & word != "series" & word != "https" & word != "win" & word != "free")
+
+
+
+# Left join sentiment words w/ wine_words
+xbox_words <- xbox_words %>% left_join(temp1, by =c("word"="word")) # Joined based on the "word"
+
+
+
+# Create this as a numeric value
+## Creating "positive" column
+xbox_words$positive <- 0
+
+## Creating "negative" column
+xbox_words$negative <- 0
+
+
+# Replace and populate columns
+xbox_words <- xbox_words %>%
+  mutate(positive = replace(positive, sentiment == "positive", 1)) %>% # if "sentiment" = positive = 1
+  mutate(negative = replace(negative, sentiment == "negative", 1)) # if "sentiment" = negative = 1
+
+
+# Sum up all positive and negative words, create new variable "sentiment" (difference between the 2)
+xbox_words <- xbox_words %>%
+  group_by(id) %>%
+  summarize(pos_words = sum(positive),
+            neg_words = sum(negative)) %>%
+  mutate(sentiment = pos_words - neg_words)
+
+# Join original data with word data
+xbox_x_txt <- xbox_x_txt %>%
+  left_join(xbox_words, by = c("id"="id"))
+
+
+# Showing positive sentiments
+xbox_x_txt %>% filter(sentiment > 0) %>%
+  select(text, sentiment, screen_name, location, text_length) %>%
+  arrange(desc(sentiment)) 
+# Now we only have 3183 positive tweets by removing the word "win" & "free" instead of 4786 "positive" tweets we had before
+
+
+# Showing Negative sentiments
+xbox_x_txt %>% filter(sentiment < 0) %>% 
+  select(screen_name, text, location, text_length, sentiment) 
+## 2834 "negative" tweets compared to 2756 "negative" tweets before
+
+
+# Looking if text_length as general sentiment
+## Looking at Tweets with more than 122 characters
+xbox_x_txt %>%
+  filter(text_length > 122) %>%
+  summarize(sum(sentiment)) # having a longer word count (over the median of 122, as well as excluding 122), in the analysis will show a higher positive sentiment which was 165 
+
+## Finding the Averages
+xbox_x_txt %>%
+  filter(text_length > 122) %>% select(pos_words, neg_words, sentiment) %>%
+  summary()
+### Positive word Average = .51
+### Negative word Average = .49
+### Overall sentiment Average = .019
+
+
+
+## Looking at tweets with less than 122 characters
+sumX <- xbox_x_txt %>%
+  filter(text_length < 122)
+
+sumX <- sumX %>% filter(sentiment != 0) %>% select(sentiment)
+
+## Find the Sum  
+sum(sumX) # -11
+
+## Reset SumX to find the summary of positive and negative tweets
+sumX <- xbox_x_txt %>%
+  filter(text_length < 122) %>% select(pos_words, neg_words, sentiment)
+
+## Finding the Averages
+summary(sumX)
+### Positive word Average = .1518
+### Negative word Average = .1531
+### Overall sentiment Average = -.00132
+
+
+
+xbox_x_txt %>%
+  filter(pos_words != "NA" & neg_words != "NA" & sentiment != "NA") %>%
+  select(pos_words,neg_words,sentiment) %>%
+  summary()
+
+
+# the mean positive words .315, mean negative is .306, overall sentiment is .0089
+# The takeakeaway here = ______ are often positive 
+## The positive word section was reduced .1198
+## The negative word section is nearly the same .306
+## The overall sentiment was reduced .1199, oddly similar to positive reduction
+
+```
+
+
+
+
+# Doing a emoji analysis (pending updating r)
+```{r}
+
+install.packages("emo")
+library(emo)
+xbox_x %>%
+  mutate(emoji = ji_extract_all(text)) %>%
+  unnest(cols = c(emoji)) %>%
+  count(emoji, sort = TRUE) %>%
+  top_n(10)
+
+```
+
+# Top 15 mentions
+```{r}
+
+# Barchart of top 15 mentions
+xbox_x %>% 
+  unnest_tokens(mentions, text, "tweets", to_lower = FALSE) %>%
+  filter(str_detect(mentions, "^@")) %>%  
+  count(mentions, sort = TRUE) %>%
+  top_n(15) %>%
+  ggplot(., aes(x = reorder(mentions, n), n)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  theme_minimal()
+
+
+```
+
+
+
+# Top 15 Hashtags
+```{r}
+
+
+# Barchart of top 15 Hashtags
+
+xbox_x %>%
+  unnest_tokens(hashtag, text, "tweets", to_lower = T) %>%
+  filter(str_detect(hashtag, "^#")) %>%
+  count(hashtag, sort = TRUE) %>%
+  top_n(15) %>%
+  ggplot(., aes(x = reorder(hashtag, n), n)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  theme_minimal()
+
+
+```
+
+
+
+
+# Data Manipulation (For Playstation)
+
+```{r}
+# Variations of PS5
+ps5 <-search_tweets("\"playstation 5\" OR \"playstation\" OR \"playstation 5 release\" OR \"ps5 release\" OR \"sony playstation 5\" OR \"play station 5\" OR \"order playstation 5\" OR \"order ps5\" OR \"next generation console ps5\"",
+                           n=18000,
+                           include_rts=FALSE,
+                           lang="en",
+                           parse=TRUE)
+
+
+
+```
+
+# Data Analysis for PS5
+```{r}
+ps5 <- as.data.frame(ps5)
+ps5$id <- seq.int(nrow(ps5))
+
+# Pulling out only text information
+ps5_txt <- ps5
+
+# Change all text to lowercase
+ps5_txt$text <- tolower(ps5_txt$text)
+
+
+# Remove duplicates
+ps5_txt <- ps5_txt %>% filter(!duplicated(ps5_txt)) 
+
+
+
+# Create a text_length variable
+ps5_txt$text_length <- str_length(ps5_txt$text)
+
+
+# Extract using unnest_tokens
+ps5_words <- ps5_txt %>% unnest_tokens(word, text) %>% select(id,word)
+
+ps5_words <- ps5_words %>% anti_join(stop_words)
+
+# View the top 20 words
+head(ps5_words %>% count(word, sort = TRUE), 20)
+## Remove words like, playstation, t.co, series, https
+
+
+# Takeout certain words
+ps5_words <- ps5_words %>%
+  filter(word != "playstation" & word != "t.co" & word != "series" & word != "https")
+
+
+
+# Word count after filter
+head(ps5_words %>% count(word, sort = TRUE), 20)
+
+
+# View top sentiment words
+head(sentiments) 
+
+# Create variable for Sentiment
+temp1 <- sentiments 
+
+
+# Left join sentiment words w/ wine_words
+ps5_words <- ps5_words %>% left_join(temp1, by =c("word"="word")) # Joined based on the "word"
+
+
+
+# Create this as a numeric value
+## Creating "positive" column
+ps5_words$positive <- 0
+
+## Creating "negative" column
+ps5_words$negative <- 0
+
+
+# Replace and populate columns
+ps5_words <- ps5_words %>%
+  mutate(positive = replace(positive, sentiment == "positive", 1)) %>% 
+  # if "sentiment" = positive = 1
+  mutate(negative = replace(negative, sentiment == "negative", 1)) 
+  # if "sentiment" = negative = 1
+
+
+# Sum up all positive and negative words, create new variable "sentiment" (difference between the 2)
+ps5_words <- ps5_words %>%
+  group_by(id) %>%
+  summarize(pos_words = sum(positive),
+            neg_words = sum(negative)) %>%
+  mutate(sentiment = pos_words - neg_words)
+
+# Join original data with word data
+ps5_txt <- ps5_txt %>%
+  left_join(ps5_words, by = c("id"="id"))
+
+
+# Showing positive sentiments
+ps5_txt %>% filter(sentiment > 0) %>%
+  select(text, sentiment, screen_name, location, text_length) %>%
+  arrange(desc(sentiment)) ## We only have 3977 positive tweets
+
+
+# Showing Negative sentiments
+ps5_txt %>% filter(sentiment < 0) %>% 
+  select(screen_name, text, location, text_length, sentiment) # 4065 "negative" tweets
+
+
+# Find the Median text_length
+summary(ps5_txt$text_length) # 106
+
+
+# Looking if text_length as general sentiment
+## Looking at Tweets with more than 106 characters 
+ps5_txt %>%
+  filter(text_length > 106) %>%
+  summarize(sum(sentiment)) # having a longer word count (over the median of 106, as well as excluding 106), in the analysis the overall sentiment was -18
+
+
+
+## Finding the Averages of tweets greater than 106 characters
+ps5_txt %>%
+  filter(text_length > 106) %>% select(pos_words, neg_words, sentiment) %>%
+  summary()
+### Positive word Average = 0.6614
+### Negative word Average = 0.6634
+### Overall sentiment Average = -0.002034
+
+  
+
+
+
+## Looking at tweets with less than 106 characters
+sumP <- ps5_txt %>%
+  filter(text_length < 106)
+
+sumP <- sumP %>% filter(sentiment != 0) %>% select(sentiment)
+
+## Find the Sum  
+sum(sumP) # -156
+
+## Reset SumX to find the summary of positive and negative tweets
+sumP <- ps5_txt %>%
+  filter(text_length < 106) %>% select(pos_words, neg_words, sentiment)
+
+## Finding the Averages
+summary(sumP)
+### Positive word Average = 0.1769
+### Negative word Average = 0.1943
+### Overall sentiment Average = -0.01739
+
+  
+
+
+ps5_txt %>%
+  filter(pos_words != "NA" & neg_words != "NA" & sentiment != "NA") %>%
+  select(pos_words,neg_words,sentiment) %>%
+  summary()
+
+# The mean positive words 0.4152, mean negative is 0.4282, the overall sentiment mean was -0.01302
+# The takeaway here = ______ are often positive 
+
+
+
+
+```
+
+
+
+
+# Analysis w/out the word "Win" or "Free"
+```{r}
+ps5 <- as.data.frame(ps5)
+ps5$id <- seq.int(nrow(ps5))
+
+# Pulling out only text information
+ps5_txt <- ps5
+
+# Change all text to lowercase
+ps5_txt$text <- tolower(ps5_txt$text)
+
+
+# Remove duplicates
+ps5_txt <- ps5_txt %>% filter(!duplicated(ps5_txt)) 
+
+
+
+# Create a text_length variable
+ps5_txt$text_length <- str_length(ps5_txt$text)
+
+
+# Extract using unnest_tokens
+ps5_words <- ps5_txt %>% unnest_tokens(word, text) %>% select(id,word)
+
+ps5_words <- ps5_words %>% anti_join(stop_words)
+
+# View the top 20 words
+head(ps5_words %>% count(word, sort = TRUE), 20)
+## Remove words like, playstation, t.co, series, https
+
+
+ps5_words <- ps5_words %>%
+  filter(word != "playstation" & word != "t.co" & word != "series" & word != "https" & word != "Win" & word != "Free")
+
+
+
+# Word count after filter
+head(ps5_words %>% count(word, sort = TRUE), 20)
+
+
+# View top sentiment words
+head(sentiments) 
+
+# Create variable for Sentiment
+temp1 <- sentiments 
+
+
+# Left join sentiment words w/ wine_words
+ps5_words <- ps5_words %>% left_join(temp1, by =c("word"="word")) # Joined based on the "word"
+
+
+
+# Create this as a numeric value
+## Creating "positive" column
+ps5_words$positive <- 0
+
+## Creating "negative" column
+ps5_words$negative <- 0
+
+
+# Replace and populate columns
+ps5_words <- ps5_words %>%
+  mutate(positive = replace(positive, sentiment == "positive", 1)) %>% 
+  # if "sentiment" = positive = 1
+  mutate(negative = replace(negative, sentiment == "negative", 1)) 
+  # if "sentiment" = negative = 1
+
+
+# Sum up all positive and negative words, create new variable "sentiment" (difference between the 2)
+ps5_words <- ps5_words %>%
+  group_by(id) %>%
+  summarize(pos_words = sum(positive),
+            neg_words = sum(negative)) %>%
+  mutate(sentiment = pos_words - neg_words)
+
+# Join original data with word data
+ps5_txt <- ps5_txt %>%
+  left_join(ps5_words, by = c("id"="id"))
+
+
+# Showing positive sentiments
+ps5_txt %>% filter(sentiment > 0) %>%
+  select(text, sentiment, screen_name, location, text_length) %>%
+  arrange(desc(sentiment)) ## We only have 3977 positive tweets
+
+
+# Showing Negative sentiments
+ps5_txt %>% filter(sentiment < 0) %>% 
+  select(screen_name, text, location, text_length, sentiment) # 4065 "negative" tweets
+
+
+# Find the Median text_length
+summary(ps5_txt$text_length) # 106
+
+
+# Looking if text_length as general sentiment
+## Looking at Tweets with more than 106 characters 
+ps5_txt %>%
+  filter(text_length > 106) %>%
+  summarize(sum(sentiment)) # having a longer word count (over the median of 106, as well as excluding 106), in the analysis the overall sentiment was -18
+
+
+
+## Finding the Averages of tweets greater than 106 characters
+ps5_txt %>%
+  filter(text_length > 106) %>% select(pos_words, neg_words, sentiment) %>%
+  summary()
+### Positive word Average = 0.6614
+### Negative word Average = 0.6634
+### Overall sentiment Average = -0.002034
+
+
+## Looking at tweets with less than 122 characters
+sumP <- ps5_txt %>%
+  filter(text_length < 106)
+
+sumP <- sumP %>% filter(sentiment != 0) %>% select(sentiment)
+
+## Find the Sum  
+sum(sumP) # -156
+
+## Reset SumX to find the summary of positive and negative tweets
+sumP <- ps5_txt %>%
+  filter(text_length < 106) %>% select(pos_words, neg_words, sentiment)
+
+## Finding the Averages
+summary(sumP)
+### Positive word Average = 0.1769
+### Negative word Average = 0.1943
+### Overall sentiment Average = -0.01739
+
+  
+
+
+ps5_txt %>%
+  filter(pos_words != "NA" & neg_words != "NA" & sentiment != "NA") %>%
+  select(pos_words,neg_words,sentiment) %>%
+  summary()
+
+
+# All figures are the same as the previous attempt, interestinly, both win & free were not mentioned once within the playstation twitter scrape
+
+
+```
+
+
+# Top 15 mentions: PS5
+```{r}
+
+# Barchart of top 15 mentions
+ps5_txt %>% 
+  unnest_tokens(mentions, text, "tweets", to_lower = FALSE) %>%
+  filter(str_detect(mentions, "^@")) %>%  
+  count(mentions, sort = TRUE) %>%
+  top_n(15) %>%
+  ggplot(., aes(x = reorder(mentions, n), n)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  theme_minimal()
+
+
+```
+
+
+
+# Top 15 Hashtags: PS5
+```{r}
+
+
+# Barchart of top 15 Hashtags
+
+ps5_txt %>%
+  unnest_tokens(hashtag, text, "tweets", to_lower = T) %>%
+  filter(str_detect(hashtag, "^#")) %>%
+  count(hashtag, sort = TRUE) %>%
+  top_n(15) %>%
+  ggplot(., aes(x = reorder(hashtag, n), n)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  theme_minimal()
+
+
+```
+
+
+
+# Data Analysis for Playstation 5 (1st Attempt)
+
+```{r}
+# change all of the characters to lowercase, create a text length 
+# use grep() to find unique words
+# looking for different variations of words for example: \\sps5\\s
+# Create a test dataset
+# Do an unnest_token() to find out the count of words
+# Create a wordcloud and other visualizations
+# Get rid of stop_words for a better count
+# Get rid of ty/ing endings (meet with jake)
+# Look at sentiment & join with word count data
+# Create positive/negative variable
+# Create a sum(positive) & sum(negative) words
+# Based on those sums I will add up the totals of positive and negative and get a general idea
+```
+
+
+# Compare the three consoles (1st attempt)
+## Data Viz
+
+```{r}
+# compare the 3 using wordclouds, barcharts, visualizations that are easily comparable
+```
+
+# Data Analysis for Xbox Series X (2nd Attempt)
+
+```{r}
+# Same as attempt 1
+# change all of the characters to lowercase, create a text length 
+# use grep() to find unique words
+# looking for different variations of words for example: \\sxboxx\\s
+# Create a test dataset
+# Do an unnest_token() to find out the count of words
+# Create a wordcloud and other visualizations
+# Get rid of stop_words for a better count
+# Get rid of ty/ing endings (meet with jake)
+# Look at sentiment & join with word count data
+# Create positive/negative variable
+# Create a sum(positive) & sum(negative) words
+# Based on those sums I will add up the totals of positive and negative and get a general idea
+```
+
+
+# Data Analysis for Xbox Series S (2nd Attempt)
+
+```{r}
+# Same as attempt 1
+# change all of the characters to lowercase, create a text length 
+# use grep() to find unique words
+# looking for different variations of words for example: \\sxboxs\\s
+# Create a test dataset
+# Do an unnest_token() to find out the count of words
+# Create a wordcloud and other visualizations
+# Get rid of stop_words for a better count
+# Get rid of ty/ing endings (meet with jake)
+# Look at sentiment & join with word count data
+# Create positive/negative variable
+# Create a sum(positive) & sum(negative) words
+# Based on those sums I will add up the totals of positive and negative and get a general idea
+```
+
+
+# Data Analysis for Playstation 5 (2nd Attempt)
+
+```{r}
+# Same as step 1
+# change all of the characters to lowercase, create a text length 
+# use grep() to find unique words
+# looking for different variations of words for example: \\sps5\\s
+# Create a test dataset
+# Do an unnest_token() to find out the count of words
+# Create a wordcloud and other visualizations
+# Get rid of stop_words for a better count
+# Get rid of ty/ing endings (meet with jake)
+# Look at sentiment & join with word count data
+# Create positive/negative variable
+# Create a sum(positive) & sum(negative) words
+# Based on those sums I will add up the totals of positive and negative and get a general idea
+```
+
+
+# Compare the three consoles (2nd attempt)
+## Data Viz
+
+```{r}
+# Compare each of the second attempts against one another
+# then compare attempt 1 with attempt 2 for each of the consoles
+# Use same visualizations as before 
+```
+
+
