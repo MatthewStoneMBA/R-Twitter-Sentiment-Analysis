@@ -1,4 +1,4 @@
-# R Twitter Sentiment Analysis — Xbox Series X Launch
+# Xbox Twitter Sentiment Analysis
 
 A marketing analytics project using R to perform sentiment analysis on Twitter data around the **Xbox Series X** launch. Pulls ~18,000 tweets, cleans and tokenizes the text, and analyzes public sentiment toward the product release.
 
